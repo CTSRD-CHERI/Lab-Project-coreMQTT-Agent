@@ -1,5 +1,9 @@
 /*
  * Lab-Project-coreMQTT-Agent 201215
+ *
+ * Copyright (c) 2021 Hesham Almatary <Hesham.Almatary@cl.cam.ac.uk>
+ * See LICENSE_CHERI
+ *
  * Copyright (C) 2020 Amazon.com, Inc. or its affiliates.  All Rights Reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of
@@ -33,10 +37,6 @@
 /* Standard includes. */
 #include <stdio.h>
 #include <time.h>
-
-/* Visual studio intrinsics used so the __debugbreak() function is available
- * should an assert get hit. */
-#include <intrin.h>
 
 /* FreeRTOS includes. */
 #include <FreeRTOS.h>
@@ -129,16 +129,7 @@ int main( void )
     /* Start the RTOS scheduler. */
     vTaskStartScheduler();
 
-    /* If all is well, the scheduler will now be running, and the following
-     * line will never be reached.  If the following line does execute, then
-     * there was insufficient FreeRTOS heap memory available for the idle and/or
-     * timer tasks to be created.  See the memory management section on the
-     * FreeRTOS web site for more details (this is standard text that is not
-     * really applicable to the Win32 simulator port). */
-    for( ; ; )
-    {
-        __debugbreak();
-    }
+    for( ; ; );
 }
 /*-----------------------------------------------------------*/
 
@@ -182,10 +173,45 @@ void vApplicationIPNetworkEventHook( eIPCallbackEvent_t eNetworkEvent )
 }
 /*-----------------------------------------------------------*/
 
+/* Called automatically when a reply to an outgoing ping is received. */
+void vApplicationPingReplyHook( ePingReplyStatus_t eStatus,
+                                uint16_t usIdentifier )
+{
+    static const char * pcSuccess = "Ping reply received - ";
+    static const char * pcInvalidChecksum = "Ping reply received with invalid checksum - ";
+    static const char * pcInvalidData = "Ping reply received with invalid data - ";
+
+    switch( eStatus )
+    {
+        case eSuccess:
+            FreeRTOS_printf( ( pcSuccess ) );
+            break;
+
+        case eInvalidChecksum:
+            FreeRTOS_printf( ( pcInvalidChecksum ) );
+            break;
+
+        case eInvalidData:
+            FreeRTOS_printf( ( pcInvalidData ) );
+            break;
+
+        default:
+
+            /* It is not possible to get here as all enums have their own
+             * case. */
+            break;
+    }
+
+    FreeRTOS_printf( ( "identifier %d\r\n", ( int ) usIdentifier ) );
+
+    /* Prevent compiler warnings in case FreeRTOS_debug_printf() is not defined. */
+    ( void ) usIdentifier;
+}
+/*-----------------------------------------------------------*/
+
 void vAssertCalled( const char * pcFile,
                     uint32_t ulLine )
 {
-    volatile uint32_t ulBlockVariable = 0UL;
     volatile char * pcFileName = ( volatile char * ) pcFile;
     volatile uint32_t ulLineNumber = ulLine;
 
@@ -194,19 +220,14 @@ void vAssertCalled( const char * pcFile,
 
     printf( "vAssertCalled( %s, %u\n", pcFile, ulLine );
 
-    /* Setting ulBlockVariable to a non-zero value in the debugger will allow
-     * this function to be exited. */
     taskDISABLE_INTERRUPTS();
-    {
-        while( ulBlockVariable == 0UL )
-        {
-            __debugbreak();
-        }
-    }
-    taskENABLE_INTERRUPTS();
+    asm volatile ( "ebreak" );
+
+    for ( ; ; );
 }
 /*-----------------------------------------------------------*/
 
+#if 0
 UBaseType_t uxRand( void )
 {
     const uint32_t ulMultiplier = 0x015a4e35UL, ulIncrement = 1UL;
