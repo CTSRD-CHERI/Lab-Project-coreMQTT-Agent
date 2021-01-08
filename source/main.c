@@ -75,6 +75,10 @@ static void prvSRand( UBaseType_t ulSeed );
  */
 static void prvMiscInitialisation( void );
 
+void vLoggingPrintf( const char * pcFormatString, ...) {
+  printf(pcFormatString);
+}
+
 /* The default IP and MAC address used by the demo.  The address configuration
  * defined here will be used if ipconfigUSE_DHCP is 0, or if ipconfigUSE_DHCP is
  * 1 but a DHCP server could not be contacted.  See the online documentation for
