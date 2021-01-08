@@ -50,6 +50,7 @@
 #define MBEDTLS_CONFIG_H
 
 #include "stdint.h"
+#include <stddef.h>
 
 #define MBEDTLS_DEBUG_C
 #define MBEDTLS_DEBUG_THRESHOLD 5 /* 0 to 5. */
