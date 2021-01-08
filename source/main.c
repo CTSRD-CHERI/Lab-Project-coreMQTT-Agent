@@ -313,7 +313,6 @@ BaseType_t xApplicationGetRandomNumber( uint32_t * pulNumber )
     *pulNumber = uxRand();
     return pdTRUE;
 }
-#endif
 /*-----------------------------------------------------------*/
 
 /* configUSE_STATIC_ALLOCATION is set to 1, so the application must provide an
@@ -369,4 +368,4 @@ void vApplicationGetTimerTaskMemory( StaticTask_t ** ppxTimerTaskTCBBuffer,
     *pulTimerTaskStackSize = configTIMER_TASK_STACK_DEPTH;
 }
 /*-----------------------------------------------------------*/
-
+#endif
