@@ -257,8 +257,8 @@ static void prvMiscInitialisation( void )
     time_t xTimeNow;
     uint32_t ulLoggingIPAddress;
 
-    ulLoggingIPAddress = FreeRTOS_inet_addr_quick( configUDP_LOGGING_ADDR0, configUDP_LOGGING_ADDR1, configUDP_LOGGING_ADDR2, configUDP_LOGGING_ADDR3 );
-    vLoggingInit( xLogToStdout, xLogToFile, xLogToUDP, ulLoggingIPAddress, configPRINT_PORT );
+    //ulLoggingIPAddress = FreeRTOS_inet_addr_quick( configUDP_LOGGING_ADDR0, configUDP_LOGGING_ADDR1, configUDP_LOGGING_ADDR2, configUDP_LOGGING_ADDR3 );
+    //vLoggingInit( xLogToStdout, xLogToFile, xLogToUDP, ulLoggingIPAddress, configPRINT_PORT );
 
     /*
      * Seed random number generator.
