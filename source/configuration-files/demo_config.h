@@ -92,7 +92,7 @@ extern void vLoggingPrintf( const char * pcFormatString,
  *!!! hard coded constant.
  *
  */
-#define democonfigCLIENT_IDENTIFIER              "...insert here..."
+#define democonfigCLIENT_IDENTIFIER              "CheriFreeRTOS"
 
 /**
  * @brief Endpoint of the MQTT broker to connect to.
@@ -245,7 +245,7 @@ extern void vLoggingPrintf( const char * pcFormatString,
  * The current value is given as an example. Please update for your specific
  * operating system.
  */
-#define democonfigOS_NAME                   "FreeRTOS"
+#define democonfigOS_NAME                   "CheriFreeRTOS"
 
 /**
  * @brief The version of the operating system that the application is running
@@ -259,7 +259,7 @@ extern void vLoggingPrintf( const char * pcFormatString,
  * current value is given as an example. Please update for your specific
  * hardware platform.
  */
-#define democonfigHARDWARE_PLATFORM_NAME    "WinSim"
+#define democonfigHARDWARE_PLATFORM_NAME    "qemu-virt"
 
 /**
  * @brief The name of the MQTT library used and its version, following an "@"
@@ -369,7 +369,7 @@ extern void vLoggingPrintf( const char * pcFormatString,
  * Provide default values for undefined configuration settings.
  */
 #ifndef democonfigOS_NAME
-    #define democonfigOS_NAME    "FreeRTOS"
+    #define democonfigOS_NAME    "CheriFreeRTOS"
 #endif
 
 #ifndef democonfigOS_VERSION
@@ -377,7 +377,7 @@ extern void vLoggingPrintf( const char * pcFormatString,
 #endif
 
 #ifndef democonfigHARDWARE_PLATFORM_NAME
-    #define democonfigHARDWARE_PLATFORM_NAME    "WinSim"
+    #define democonfigHARDWARE_PLATFORM_NAME    "qemu-virt"
 #endif
 
 #ifndef democonfigMQTT_LIB
