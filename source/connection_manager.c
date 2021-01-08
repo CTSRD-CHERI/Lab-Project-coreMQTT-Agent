@@ -77,6 +77,8 @@
 #include "exponential_backoff.h"
 
 
+#include "transport_interface.h"
+
 /* Transport interface include. */
 #if defined( democonfigUSE_TLS ) && ( democonfigUSE_TLS == 1 )
     #include "using_mbedtls.h"
@@ -150,6 +152,22 @@
  */
 #define mqttexampleMQTT_CONTEXT_HANDLE               ( ( MQTTContextHandle_t ) 0 )
 
+
+#if democonfigUSE_TLS
+typedef struct NetworkContext
+{
+    TlsTransportParams_t * pParams;
+} NetworkContext_t;
+
+static TlsTransportParams_t transportParams;
+#else
+typedef struct NetworkContext
+{
+    PlaintextTransportParams_t* pParams;
+} NetworkContext_t;
+
+static PlaintextTransportParams_t transportParams;
+#endif
 
 /*-----------------------------------------------------------*/
 
@@ -310,6 +328,8 @@ static MQTTStatus_t prvMQTTInit( void )
     MQTTStatus_t xReturn;
     const MQTTContextHandle_t xGlobalMQTTContextHandle = 0;
 
+    xNetworkContext.pParams = &transportParams;
+
     /* Fill in Transport Interface send and receive function pointers. */
     xTransport.pNetworkContext = &xNetworkContext;
     #if defined( democonfigUSE_TLS ) && ( democonfigUSE_TLS == 1 )
@@ -460,6 +480,9 @@ static BaseType_t prvSocketConnect( NetworkContext_t * pxNetworkContext )
      * timeout. Timeout value will exponentially increase until the maximum
      * number of attempts are reached.
      */
+
+    xNetworkContext.pParams = &transportParams;
+
     do
     {
         /* Establish a TCP connection with the MQTT broker. This example connects to
@@ -503,13 +526,13 @@ static BaseType_t prvSocketConnect( NetworkContext_t * pxNetworkContext )
     /* Set the socket wakeup callback and ensure the read block time. */
     if( xConnected )
     {
-        ( void ) FreeRTOS_setsockopt( pxNetworkContext->tcpSocket,
+        ( void ) FreeRTOS_setsockopt( pxNetworkContext->pParams->tcpSocket,
                                       0, /* Level - Unused. */
                                       FREERTOS_SO_WAKEUP_CALLBACK,
                                       ( void * ) prvMQTTClientSocketWakeupCallback,
                                       sizeof( &( prvMQTTClientSocketWakeupCallback ) ) );
 
-        ( void ) FreeRTOS_setsockopt( pxNetworkContext->tcpSocket,
+        ( void ) FreeRTOS_setsockopt( pxNetworkContext->pParams->tcpSocket,
                                       0,
                                       FREERTOS_SO_RCVTIMEO,
                                       &xTransportTimeout,
@@ -526,7 +549,7 @@ static BaseType_t prvSocketDisconnect( NetworkContext_t * pxNetworkContext )
     BaseType_t xDisconnected = pdFAIL;
 
     /* Set the wakeup callback to NULL since the socket will disconnect. */
-    ( void ) FreeRTOS_setsockopt( pxNetworkContext->tcpSocket,
+    ( void ) FreeRTOS_setsockopt( pxNetworkContext->pParams->tcpSocket,
                                   0, /* Level - Unused. */
                                   FREERTOS_SO_WAKEUP_CALLBACK,
                                   ( void * ) NULL,
