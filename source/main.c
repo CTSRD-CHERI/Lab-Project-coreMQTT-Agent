@@ -101,8 +101,8 @@ const BaseType_t xLogToStdout = pdTRUE, xLogToFile = pdFALSE, xLogToUDP = pdFALS
 const uint8_t ucMACAddress[ 6 ] = { configMAC_ADDR0, configMAC_ADDR1, configMAC_ADDR2, configMAC_ADDR3, configMAC_ADDR4, configMAC_ADDR5 };
 
 /* Use by the pseudo random number generator. */
-static UBaseType_t ulNextRand;
 
+// static UBaseType_t ulNextRand;
 
 /*-----------------------------------------------------------*/
 
@@ -242,6 +242,7 @@ UBaseType_t uxRand( void )
     ulNextRand = ( ulMultiplier * ulNextRand ) + ulIncrement;
     return( ( int ) ( ulNextRand >> 16UL ) & 0x7fffUL );
 }
+#endif
 /*-----------------------------------------------------------*/
 
 static void prvSRand( UBaseType_t ulSeed )
@@ -302,11 +303,13 @@ extern uint32_t ulApplicationGetNextSequenceNumber( uint32_t ulSourceAddress,
  * THIS IS ONLY A DUMMY IMPLEMENTATION THAT RETURNS A PSEUDO RANDOM NUMBER SO IS
  * NOT INTENDED FOR USE IN PRODUCTION SYSTEMS.
  */
+#if 0
 BaseType_t xApplicationGetRandomNumber( uint32_t * pulNumber )
 {
     *pulNumber = uxRand();
     return pdTRUE;
 }
+#endif
 /*-----------------------------------------------------------*/
 
 /* configUSE_STATIC_ALLOCATION is set to 1, so the application must provide an
