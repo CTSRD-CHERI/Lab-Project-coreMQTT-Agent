@@ -1,5 +1,9 @@
 /*
- * FreeRTOS OTA PAL for Windows Simulator V1.0.3
+ * FreeRTOS OTA PAL for platforms having FreeRTOS-FAT
+ *
+ * Copyright (c) 2021 Hesham Almatary <Hesham.Almatary@cl.cam.ac.uk>
+ * See LICENSE_CHERI
+ *
  * Copyright (C) 2020 Amazon.com, Inc. or its affiliates.  All Rights Reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of
@@ -23,7 +27,7 @@
  * http://www.FreeRTOS.org
  */
 
-/* OTA PAL implementation for Windows platform. */
+/* OTA PAL implementation for platforms having FreeRTOS-FAT */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -36,10 +40,14 @@
 #include "aws_ota_codesigner_certificate.h"
 #include "ota_pal.h"
 
+/* FreeRTOS+FAT headers. */
+#include "ff_headers.h"
+#include "ff_stdio.h"
+
 /* Specify the OTA signature algorithm we support on this platform. */
 const char OTA_JsonFileSignatureKey[ OTA_FILE_SIG_KEY_STR_MAX_LENGTH ] = "sig-sha256-ecdsa";
 
-static OtaErr_t otaPal_CheckFileSignature( OtaFileContext_t * const C );
+static OtaPalMainStatus_t otaPal_CheckFileSignature( OtaFileContext_t * const C );
 static uint8_t * otaPal_ReadAndAssumeCertificate( const uint8_t * const pucCertName,
                                                   uint32_t * const ulSignerCertSize );
 
@@ -54,8 +62,8 @@ static inline BaseType_t prvContextValidate( OtaFileContext_t* pFileContext )
 /* Used to set the high bit of Windows error codes for a negative return value. */
 #define OTA_PAL_INT16_NEGATIVE_MASK    ( 1 << 15 )
 
-/* Size of buffer used in file operations on this platform (Windows). */
-#define OTA_PAL_WIN_BUF_SIZE ( ( size_t ) 4096UL )
+/* Size of buffer used in file operations on this platform. */
+#define OTA_PAL_BUF_SIZE ( ( size_t ) 4096UL )
 
 /* Attempt to create a new receive file for the file chunks as they come in. */
 
@@ -68,18 +76,24 @@ OtaPalStatus_t otaPal_CreateFileForRx( OtaFileContext_t* const C )
     {
         if ( C->pFilePath != NULL )
         {
-            C->pFile = fopen( ( const char * )C->pFilePath, "w+b" ); /*lint !e586
-                                                                           * C standard library call is being used for portability. */
+            C->pFile = ff_fopen(  ( const char * )C->pFilePath, "w" );
 
             if ( C->pFile != NULL )
             {
                 mainErr = OtaPalSuccess;
+                /* Write zeros of the requested file size to create an FF_FILE
+                 * of that file as ff_fseek doesn't increase the file size and fails
+                 * when trying to seek a position larger than the default assigned
+                 * file size
+                 */
+                BaseType_t zeros = 0;
+                ff_fwrite( &zeros, sizeof(uint64_t), ( C->fileSize / sizeof( BaseType_t )), ( FF_FILE * ) C->pFile );
+
                 LogInfo( ( "Receive file created.\r\n" ) );
             }
             else
             {
                 mainErr = OtaPalRxFileCreateFailed;
-                subErr = errno;
                 LogError( ( "ERROR - Failed to start operation: already active!\r\n" ) );
             }
         }
@@ -95,7 +109,7 @@ OtaPalStatus_t otaPal_CreateFileForRx( OtaFileContext_t* const C )
         LogError( ( "ERROR - Invalid file context provided.\r\n" ) );
     }
 
-    return OTA_PAL_COMBINE_ERR(mainErr,subErr); 
+    return OTA_PAL_COMBINE_ERR(mainErr,subErr);
 }
 
 
@@ -113,8 +127,8 @@ OtaPalStatus_t otaPal_Abort( OtaFileContext_t * const C )
         /* Close the OTA update file if it's open. */
         if( NULL != C->pFile )
         {
-            lFileCloseResult = fclose( C->pFile ); /*lint !e482 !e586
-                                                      * Context file handle state is managed by this API. */
+            lFileCloseResult = ff_fclose( ( FF_FILE * ) C->pFile );
+
             C->pFile = NULL;
 
             if( 0 == lFileCloseResult )
@@ -126,7 +140,6 @@ OtaPalStatus_t otaPal_Abort( OtaFileContext_t * const C )
             {
                 LogError( ( "ERROR - Closing file failed.\r\n" ) );
                 mainErr = OtaPalFileAbort;
-                subErr = errno;
             }
         }
         else
@@ -154,19 +167,17 @@ int16_t otaPal_WriteBlock( OtaFileContext_t * const C,
 
     if( prvContextValidate( C ) == pdTRUE )
     {
-        lResult = fseek( C->pFile, ulOffset, SEEK_SET ); /*lint !e586 !e713 !e9034
-                                                            * C standard library call is being used for portability. */
+        lResult = ff_fseek ( ( FF_FILE * ) C->pFile, ulOffset, FF_SEEK_SET );
 
         if( 0 == lResult )
         {
-            lResult = fwrite( pacData, 1, ulBlockSize, C->pFile ); /*lint !e586 !e713 !e9034
-                                                                      * C standard library call is being used for portability. */
+            lResult = ff_fwrite( pacData, ulBlockSize, 1, ( FF_FILE * ) C->pFile );
 
             if( lResult < 0 )
             {
                 LogError( ( "ERROR - fwrite failed\r\n" ) );
                 /* Mask to return a negative value. */
-                lResult = OTA_PAL_INT16_NEGATIVE_MASK | errno; /*lint !e40 !e9027
+                lResult = OTA_PAL_INT16_NEGATIVE_MASK; /*lint !e40 !e9027
                                                                 * Errno is being used in accordance with host API documentation.
                                                                 * Bitmasking is being used to preserve host API error with library status code. */
             }
@@ -175,7 +186,7 @@ int16_t otaPal_WriteBlock( OtaFileContext_t * const C,
         {
             LogError( ( "ERROR - fseek failed\r\n" ) );
             /* Mask to return a negative value. */
-            lResult = OTA_PAL_INT16_NEGATIVE_MASK | errno; /*lint !e40 !e9027
+            lResult = OTA_PAL_INT16_NEGATIVE_MASK; /*lint !e40 !e9027
                                                             * Errno is being used in accordance with host API documentation.
                                                             * Bitmasking is being used to preserve host API error with library status code. */
         }
@@ -195,7 +206,7 @@ OtaPalStatus_t otaPal_CloseFile( OtaFileContext_t * const C )
 {
     OtaPalMainStatus_t mainErr = OtaPalUninitialized;
     OtaPalSubStatus_t subErr = 0;
-    int32_t lWindowsError = 0;
+    int32_t lError = 0;
 
     if( prvContextValidate( C ) == pdTRUE )
     {
@@ -211,15 +222,14 @@ OtaPalStatus_t otaPal_CloseFile( OtaFileContext_t * const C )
         }
 
         /* Close the file. */
-        lWindowsError = fclose( C->pFile ); /*lint !e482 !e586
-                                               * C standard library call is being used for portability. */
+        lError = ff_fclose( ( FF_FILE * ) C->pFile );
+
         C->pFile = NULL;
 
-        if( lWindowsError != 0 )
+        if( lError != 0 )
         {
 			LogError( ( "Failed to close OTA update file.\r\n" ) );
             mainErr = OtaPalFileClose;
-            subErr = errno;
         }
 
         if( mainErr == OtaPalSuccess )
@@ -272,18 +282,16 @@ static OtaPalMainStatus_t otaPal_CheckFileSignature( OtaFileContext_t * const C 
 
             if( pucSignerCert != NULL )
             {
-                pucBuf = pvPortMalloc( OTA_PAL_WIN_BUF_SIZE ); /*lint !e9079 Allow conversion. */
+                pucBuf = pvPortMalloc( OTA_PAL_BUF_SIZE ); /*lint !e9079 Allow conversion. */
 
                 if( pucBuf != NULL )
                 {
                     /* Rewind the received file to the beginning. */
-                    if( fseek( C->pFile, 0L, SEEK_SET ) == 0 ) /*lint !e586
-                                                                  * C standard library call is being used for portability. */
+                    if ( ff_fseek ( ( FF_FILE * ) C->pFile, 0L, FF_SEEK_SET) )
                     {
                         do
                         {
-                            ulBytesRead = fread( pucBuf, 1, OTA_PAL_WIN_BUF_SIZE, C->pFile ); /*lint !e586
-                                                                                               * C standard library call is being used for portability. */
+                            ulBytesRead = ff_fread( pucBuf, OTA_PAL_BUF_SIZE, 1, ( FF_FILE * ) C->pFile );
                             /* Include the file chunk in the signature validation. Zero size is OK. */
                             CRYPTO_SignatureVerificationUpdate( pvSigVerifyContext, pucBuf, ulBytesRead );
                         } while( ulBytesRead > 0UL );
@@ -340,36 +348,33 @@ static OtaPalMainStatus_t otaPal_CheckFileSignature( OtaFileContext_t * const C 
 static uint8_t * otaPal_ReadAndAssumeCertificate( const uint8_t * const pucCertName,
                                                   uint32_t * const ulSignerCertSize )
 {
-    FILE * pFile;
+    FF_FILE * pFile;
     uint8_t * pucSignerCert = NULL;
     uint8_t * pucCertData = NULL;
     int32_t lSize = 0; /* For MISRA mandatory. */
-    int32_t lWindowsError;
+    int32_t lError;
 
-    pFile = fopen( ( const char * ) pucCertName, "rb" ); /*lint !e586
-                                                            * C standard library call is being used for portability. */
+    pFile = ff_fopen( ( const char * ) pucCertName, "r" );
 
     if( pFile != NULL )
     {
-        lWindowsError = fseek( pFile, 0, SEEK_END );         /*lint !e586
-                                                                * C standard library call is being used for portability. */
+        lError = ff_fseek ( pFile, 0L, FF_SEEK_SET );
 
-        if( lWindowsError == 0 )                               /* fseek returns a non-zero value on error. */
+        if( lError == 0 )                               /* fseek returns a non-zero value on error. */
         {
-            lSize = (int32_t) ftell( pFile );                  /*lint !e586 Allow call in this context. */
+            lSize = (int32_t) ff_ftell( pFile );
 
             if( lSize != -1L )                                 /* ftell returns -1 on error. */
             {
-                lWindowsError = fseek( pFile, 0, SEEK_SET ); /*lint !e586
-                                                                * C standard library call is being used for portability. */
+                lError = ff_fseek ( pFile, 0L, FF_SEEK_SET );
             }
             else /* ftell returned an error, pucSignerCert remains NULL. */
             {
-                lWindowsError = -1L;
+                lError = -1L;
             }
         } /* else fseek returned an error, pucSignerCert remains NULL. */
 
-        if( lWindowsError == 0 )
+        if( lError == 0 )
         {
             /* Allocate memory for the signer certificate plus a terminating zero so we can load and return it to the caller. */
             pucSignerCert = pvPortMalloc( lSize + 1 ); /*lint !e732 !e9034 !e9079 Allow conversion. */
@@ -377,8 +382,7 @@ static uint8_t * otaPal_ReadAndAssumeCertificate( const uint8_t * const pucCertN
 
         if( pucSignerCert != NULL )
         {
-            if( fread( pucSignerCert, 1, lSize, pFile ) == ( size_t ) lSize ) /*lint !e586 !e732 !e9034
-                                                                                 * C standard library call is being used for portability. */
+            if( ff_fread( pucSignerCert, lSize, 1, pFile ) == ( size_t ) lSize )
             {
                 /* The crypto code requires the terminating zero to be part of the length so add 1 to the size. */
                 *ulSignerCertSize = lSize + 1;
@@ -396,10 +400,9 @@ static uint8_t * otaPal_ReadAndAssumeCertificate( const uint8_t * const pucCertN
             /* Nothing special to do. */
         }
 
-        lWindowsError = fclose( pFile ); /*lint !e586
-                                            * C standard library call is being used for portability. */
+        lError = ff_fclose( pFile );
 
-        if( lWindowsError != 0 )
+        if( lError != 0 )
         {
 			LogError( ( "File pointer operation failed.\r\n" ) );
             pucSignerCert = NULL;
@@ -462,37 +465,32 @@ OtaPalStatus_t otaPal_SetPlatformImageState( OtaFileContext_t * const pFileConte
 
     OtaPalMainStatus_t mainErr = OtaPalSuccess;
     OtaPalSubStatus_t subErr = 0;
-    FILE * pstPlatformImageState;
+    FF_FILE * pstPlatformImageState;
 
     if( eState != OtaImageStateUnknown && eState <= OtaLastImageState )
     {
-        pstPlatformImageState = fopen( "PlatformImageState.txt", "w+b" ); /*lint !e586
-                                                                           * C standard library call is being used for portability. */
+        pstPlatformImageState = ff_fopen( "PlatformImageState.txt", "w" );
 
         if( pstPlatformImageState != NULL )
         {
             /* Write the image state to PlatformImageState.txt. */
-            if( 1 != fwrite( &eState, sizeof( OtaImageState_t ), 1, pstPlatformImageState ) ) /*lint !e586 !e9029
-                                                                                                * C standard library call is being used for portability. */
+            if( 1 != ff_fwrite( &eState, sizeof( OtaImageState_t ), 1, pstPlatformImageState) )
             {
 				LogError( ( "Unable to write to image state file.\r\n" ) );
                 mainErr = OtaPalBadImageState;
-                subErr = errno;
             }
 
             /* Close PlatformImageState.txt. */
-            if( 0 != fclose( pstPlatformImageState ) ) /*lint !e586 Allow call in this context. */
+            if( 0 != ff_fclose( pstPlatformImageState ) )
             {
 				LogError( ( "Unable to close image state file.\r\n" ) );
                 mainErr = OtaPalBadImageState;
-                subErr = errno;
             }
         }
         else
         {
 			LogError( ( "Unable to open image state file.\r\n" ) );
             mainErr = OtaPalBadImageState;
-            subErr = errno;
         }
     } /*lint !e481 Allow fopen and fclose calls in this context. */
     else /* Image state invalid. */
@@ -520,21 +518,19 @@ OtaPalImageState_t otaPal_GetPlatformImageState( OtaFileContext_t * const pFileC
 {
 	(void)pFileContext;
 
-    FILE * pstPlatformImageState;
+    FF_FILE * pstPlatformImageState;
 	OtaImageState_t eSavedAgentState = OtaImageStateUnknown;
 	OtaPalImageState_t ePalState = OtaPalImageStateUnknown;
 
-    pstPlatformImageState = fopen( "PlatformImageState.txt", "r+b" ); /*lint !e586
-                                                                       * C standard library call is being used for portability. */
+    pstPlatformImageState = ff_fopen( "PlatformImageState.txt", "r" );
 
     if( pstPlatformImageState != NULL )
     {
-        if( 1 != fread( &eSavedAgentState, sizeof(OtaImageState_t), 1, pstPlatformImageState ) ) /*lint !e586 !e9029
-                                                                                           * C standard library call is being used for portability. */
+        if( 1 != ff_fread( &eSavedAgentState, sizeof(OtaImageState_t), 1, pstPlatformImageState ) )
         {
             /* If an error occured reading the file, mark the state as aborted. */
             LogError( ( "Unable to read image state file.\r\n" ) );
-			ePalState = ( OtaPalImageStateInvalid | (errno & OTA_PAL_ERR_MASK) );
+			ePalState = OtaPalImageStateInvalid;
         }
 		else
 		{
@@ -555,11 +551,10 @@ OtaPalImageState_t otaPal_GetPlatformImageState( OtaFileContext_t * const pFileC
 		}
 
 
-        if( 0 != fclose( pstPlatformImageState ) ) /*lint !e586
-                                                    * C standard library call is being used for portability. */
+        if( 0 != ff_fclose( pstPlatformImageState ) )
         {
             LogError( ( "Unable to close image state file.\r\n" ) );
-			ePalState = (OtaPalImageStateInvalid | ( errno & OTA_PAL_ERR_MASK ) );
+			ePalState = OtaPalImageStateInvalid;
         }
     }
     else
