@@ -46,14 +46,15 @@ def configure(ctx):
         ])
 
     ctx.env.append_value('DEFINES', [
-        'configPROG_ENTRY                   = main',
-        'configUSE_NET_VIRTIO               = 1',
-        'MBEDTLS_CONFIG_FILE                = "mbedtls_config.h"',
-        'mainCONFIG_INIT_FAT_FILESYSTEM     = 1',
-        '_STAT_H_                           = 1',
-        'configCOMPARTMENTS_NUM             = 0',
-        'configMAXLEN_COMPNAME              = 255'
+        'configPROG_ENTRY     = main',
+        'MBEDTLS_CONFIG_FILE  = "mbedtls_config.h"'
     ])
+
+    ctx.define('configUSE_NET_VIRTIO', 1)
+    ctx.define('mainCONFIG_INIT_FAT_FILESYSTEM', 1)
+    ctx.define('_STAT_H_', 1)
+    ctx.define('configCOMPARTMENTS_NUM', 0)
+    ctx.define('configMAXLEN_COMPNAME', 255)
 
     ctx.env.append_value('LIB_DEPS', [
         'freertos_tcpip', 'virtio', 'freertos_libota', 'freertos_libcorejson',
